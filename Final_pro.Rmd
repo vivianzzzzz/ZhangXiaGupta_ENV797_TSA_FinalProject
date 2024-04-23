@@ -1,0 +1,207 @@
+---
+title: "TSA Final Project"
+author: "Xiyue Zhang, Haochong Xia, Ayush Gupta"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+library(readxl)
+library(lubridate)
+library(dplyr)
+library(forecast) 
+library(smooth)
+library(zoo)
+```
+
+```{r}
+bitcoin_raw <- read.csv("/Users/vivianz/Desktop/mids/spring2024/Time Series/bitcoin.csv",header=TRUE)
+
+bitcoin <-  bitcoin_raw[nrow(bitcoin_raw):1, ] %>%
+  mutate(date = as.Date(Date, format="%m/%d/%Y")) %>%
+  filter(!is.na('Change')) %>%
+  select(date, Price, Change)
+
+bitcoin$Change <- na.locf(bitcoin$Change, na.rm = FALSE)
+bitcoin$Change <- gsub("%", "", bitcoin$Change)
+bitcoin$Change = as.numeric(as.character(bitcoin$Change))
+
+# Using median to avoid the influence of other potential outliers
+median_value <- median(bitcoin$Change[bitcoin$Change != 0], na.rm = TRUE)
+bitcoin$Change[bitcoin$Change == 0] <- median_value
+
+
+```
+
+```{r}
+# Only use the data after 2017-01-01
+bitcoin <- bitcoin %>% filter(date >= ymd("2017-01-01"))
+
+# Create a dummy variable to account for the covid effect. dummy = 1 from march 15 2020 to may 1st 2021
+bitcoin <- bitcoin %>% mutate(covid = ifelse(date >= ymd("2020-03-15") & date <= ymd("2021-05-01"), 1, 0))
+
+# Set the proportion for train(90%), test datasets(10%)
+train_prop <- 0.9
+
+# Set the number of observations for train, test datasets
+n_train <- floor(nrow(bitcoin) * train_prop)
+n_val <- nrow(bitcoin) - n_train
+
+# Split the data into train and test datasets
+train_bitcoin <- bitcoin %>% filter(date >= ymd("2017-01-01") & date <= ymd("2023-01-01"))
+test_bitcoin <- bitcoin %>% filter(date >= ymd("2023-07-18") )
+
+head(train_bitcoin)
+head(test_bitcoin)
+```
+
+
+```{r}
+#Creating time series with seasonal pattern (quarterly, daily)
+msts_bitcoin <- msts(train_bitcoin$Change,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2017,01,01))
+msts_bitcoin_test <- msts(test_bitcoin$Change,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2023,07,18))
+
+#plot the time series
+ts_bitcoin %>% mstl() %>%
+  autoplot()
+
+# Generate ACF and PACF plots
+par(mfrow=c(1,2))
+acf(ts_bitcoin,lag.max = 100, main= "ACF plot of bitcoin")
+pacf(ts_bitcoin, lag.max = 100, main="PACF plot of bitcoin")
+```
+
+```{r}
+# STL + ETS model
+ETS_fit <-  stlf(msts_bitcoin,h=266)
+
+plot(ETS_fit)
+autoplot(msts_bitcoin_test) + autolayer(ETS_fit, series="ETS",PI=FALSE)
+ETS_scores <- accuracy(ETS_fit$mean,msts_bitcoin_test)
+print(ETS_scores)
+
+```
+
+
+```{r}
+# TBATS model
+TBATS_fit <- tbats(msts_bitcoin)
+TBATS_forcast <- forecast(TBATS_fit, h=266)
+plot(TBATS_forcast)
+autoplot(ts_bitcoin_test) + autolayer(TBATS_forcast, series="TBATS", PI=FALSE)
+TBATS_scores <- accuracy(TBATS_forcast$mean,msts_bitcoin_test)
+print(TBATS_scores)
+```
+
+```{r}
+#Arima with seasonality
+arima_forecast <- forecast(auto.arima(msts_bitcoin,D=1),h=266)
+
+plot(arima_forecast)
+autoplot(msts_bitcoin_test) + autolayer(arima_forecast, series="ARIMA", PI=FALSE)
+
+ARIMA_scores <- accuracy(arima_forecast$mean,msts_bitcoin_test)
+print(ARIMA_scores)
+
+
+```
+
+
+```{r}
+#Neural network with fourier (3,12), p=1,P=1
+NN_fit1 <- nnetar(msts_bitcoin,p=1,P=1,xreg=fourier(msts_bitcoin, K=c(3,12)))
+NN_for1 <- forecast(NN_fit1,h=266, xreg=fourier(msts_bitcoin, K=c(3,12),h=266))
+autoplot(NN_for1)
+autoplot(msts_bitcoin) +
+  autolayer(NN_for1, series="Neural Network",PI=FALSE)
+
+NN_scores1 <- accuracy(NN_for1$mean,msts_bitcoin_test)
+print(NN_scores1)
+```
+``` {r}
+#Neural network with fourier (3,12),p=1,P=0
+NN_fit2 <- nnetar(msts_bitcoin,p=3,P=1,xreg=fourier(msts_bitcoin, K=c(3,12)))
+NN_for2 <- forecast(NN_fit1,h=266, xreg=fourier(msts_bitcoin, K=c(3,12),h=266))
+autoplot(NN_for2)
+autoplot(msts_bitcoin) +
+  autolayer(NN_for2, series="Neural Network",PI=FALSE)
+
+NN_scores2 <- accuracy(NN_for2$mean,msts_bitcoin_test)
+print(NN_scores2)
+```
+```{r}
+# create the covid regressor
+# Create a test series with 266 rows, each initialized to 0
+msts_covid <- msts(train_bitcoin$covid,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2017,01,01))
+covid_regressors <- as.matrix(data.frame(fourier(msts_bitcoin, K=c(3,12),h=nrow(train_bitcoin)), "covid"= train_bitcoin$covid))
+future_covid_regressors <- as.matrix(data.frame(fourier(msts_bitcoin, K=c(3,12),h=nrow(test_bitcoin)), "covid"= test_bitcoin$covid))
+
+
+# NN+covid
+NN_fit3 <- nnetar(msts_bitcoin,p=1,P=1,xreg=covid_regressors)
+NN_for3 <- forecast(NN_fit3,h=266, xreg=future_covid_regressors)
+autoplot(NN_for3)
+autoplot(msts_bitcoin) +
+  autolayer(NN_for3, series="NN+covid",PI=FALSE)
+
+NN_scores3 <- accuracy(NN_for3$mean,msts_bitcoin_test)
+print(NN_scores3)
+```
+
+
+```{r}
+#SS Exponential smoothing
+SSES_fit1 <- es(msts_bitcoin,model="ZZZ",h=266,holdout=FALSE)
+
+plot(SSES_fit1)
+SSES_scores1 <- accuracy(SSES_fit1$forecast,msts_bitcoin_test)
+print(SSES_scores1)
+```
+```{r}
+#Arima+covid as regressor
+
+ARIMA_fit1<-auto.arima(msts_bitcoin,seasonal= FALSE, lambda=1,xreg=covid_regressors)
+ARIMA_for1<-forecast(ARIMA_fit1,xreg=future_covid_regressors,h=266)
+
+autoplot(ARIMA_for1)
+autoplot(msts_bitcoin) +
+  autolayer(ARIMA_for1, series="ARIMA+Covid",PI=FALSE)
+
+ARIMA_scores1 <- accuracy(ARIMA_for1$mean,msts_bitcoin_test)
+print(ARIMA_scores1)
+```
+
+
+```{r}
+# print the scores in a table
+scores <- rbind(ETS_scores, TBATS_scores, ARIMA_scores,ARIMA_scores1, NN_scores1,NN_scores2,NN_scores3,SSES_scores1)
+rownames(scores) <- c("ETS", "TBATS", "ARIMA","ARIMA with Covid","Neural Network1","Neural Network2","Neural Network with Covid","SSES")
+print(scores)
+
+```
+
+
+```{r}
+#sample code for how to add exgoneous regressors
+#Arima+Temperature as regressor
+
+ARIMA_fit1<-auto.arima(ts_load_training,seasonal= FALSE, lambda=0,xreg=temp_regressors)
+
+ARIMA_for1<-forecast(ARIMA_fit1,xreg=temp_regressors_for,h=30)
+
+autoplot(ARIMA_for1)
+autoplot(ts_load_testing) +
+  autolayer(ARIMA_for1, series="ARIMA",PI=FALSE)
+
+ARIMA_scores1 <- accuracy(ARIMA_for1$mean,ts_load_testing)
+print(ARIMA_scores1)
+```
+
