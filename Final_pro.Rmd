@@ -86,6 +86,10 @@ autoplot(msts_bitcoin_test) + autolayer(ETS_fit, series="ETS",PI=FALSE)
 ETS_scores <- accuracy(ETS_fit$mean,msts_bitcoin_test)
 print(ETS_scores)
 
+checkresiduals(ETS_fit)
+
+
+
 ```
 
 
@@ -97,6 +101,7 @@ plot(TBATS_forcast)
 autoplot(ts_bitcoin_test) + autolayer(TBATS_forcast, series="TBATS", PI=FALSE)
 TBATS_scores <- accuracy(TBATS_forcast$mean,msts_bitcoin_test)
 print(TBATS_scores)
+checkresiduals(TBATS_fit)
 ```
 
 ```{r}
@@ -111,30 +116,26 @@ print(ARIMA_scores)
 
 
 ```
+```{r}
+checkresiduals(arima_forecast)
+```
 
 
 ```{r}
 #Neural network with fourier (3,12), p=1,P=1
 NN_fit1 <- nnetar(msts_bitcoin,p=1,P=1,xreg=fourier(msts_bitcoin, K=c(3,12)))
 NN_for1 <- forecast(NN_fit1,h=266, xreg=fourier(msts_bitcoin, K=c(3,12),h=266))
-autoplot(NN_for1)
-autoplot(msts_bitcoin) +
+
+plot(NN_for1)
+autoplot(msts_bitcoin_test) +
   autolayer(NN_for1, series="Neural Network",PI=FALSE)
 
 NN_scores1 <- accuracy(NN_for1$mean,msts_bitcoin_test)
 print(NN_scores1)
-```
-``` {r}
-#Neural network with fourier (3,12),p=1,P=0
-NN_fit2 <- nnetar(msts_bitcoin,p=3,P=1,xreg=fourier(msts_bitcoin, K=c(3,12)))
-NN_for2 <- forecast(NN_fit1,h=266, xreg=fourier(msts_bitcoin, K=c(3,12),h=266))
-autoplot(NN_for2)
-autoplot(msts_bitcoin) +
-  autolayer(NN_for2, series="Neural Network",PI=FALSE)
+checkresiduals(NN_fit1)
 
-NN_scores2 <- accuracy(NN_for2$mean,msts_bitcoin_test)
-print(NN_scores2)
 ```
+
 ```{r}
 # create the covid regressor
 # Create a test series with 266 rows, each initialized to 0
@@ -148,12 +149,13 @@ future_covid_regressors <- as.matrix(data.frame(fourier(msts_bitcoin, K=c(3,12),
 # NN+covid
 NN_fit3 <- nnetar(msts_bitcoin,p=1,P=1,xreg=covid_regressors)
 NN_for3 <- forecast(NN_fit3,h=266, xreg=future_covid_regressors)
-autoplot(NN_for3)
-autoplot(msts_bitcoin) +
+plot(NN_for3)
+autoplot(msts_bitcoin_test) +
   autolayer(NN_for3, series="NN+covid",PI=FALSE)
 
 NN_scores3 <- accuracy(NN_for3$mean,msts_bitcoin_test)
 print(NN_scores3)
+checkresiduals(NN_fit3)
 ```
 
 
@@ -165,43 +167,29 @@ plot(SSES_fit1)
 SSES_scores1 <- accuracy(SSES_fit1$forecast,msts_bitcoin_test)
 print(SSES_scores1)
 ```
+
 ```{r}
 #Arima+covid as regressor
 
 ARIMA_fit1<-auto.arima(msts_bitcoin,seasonal= FALSE, lambda=1,xreg=covid_regressors)
 ARIMA_for1<-forecast(ARIMA_fit1,xreg=future_covid_regressors,h=266)
 
-autoplot(ARIMA_for1)
-autoplot(msts_bitcoin) +
+plot(ARIMA_for1)
+autoplot(msts_bitcoin_test) +
   autolayer(ARIMA_for1, series="ARIMA+Covid",PI=FALSE)
 
 ARIMA_scores1 <- accuracy(ARIMA_for1$mean,msts_bitcoin_test)
 print(ARIMA_scores1)
+checkresiduals(ARIMA_fit1)
 ```
 
 
 ```{r}
 # print the scores in a table
-scores <- rbind(ETS_scores, TBATS_scores, ARIMA_scores,ARIMA_scores1, NN_scores1,NN_scores2,NN_scores3,SSES_scores1)
-rownames(scores) <- c("ETS", "TBATS", "ARIMA","ARIMA with Covid","Neural Network1","Neural Network2","Neural Network with Covid","SSES")
+scores <- rbind(ETS_scores, TBATS_scores, ARIMA_scores,ARIMA_scores1, NN_scores1,NN_scores3)
+rownames(scores) <- c("ETS", "TBATS", "ARIMA","ARIMA with Covid","Neural Network with Fourier","Neural Network with Covid")
 print(scores)
 
 ```
 
-
-```{r}
-#sample code for how to add exgoneous regressors
-#Arima+Temperature as regressor
-
-ARIMA_fit1<-auto.arima(ts_load_training,seasonal= FALSE, lambda=0,xreg=temp_regressors)
-
-ARIMA_for1<-forecast(ARIMA_fit1,xreg=temp_regressors_for,h=30)
-
-autoplot(ARIMA_for1)
-autoplot(ts_load_testing) +
-  autolayer(ARIMA_for1, series="ARIMA",PI=FALSE)
-
-ARIMA_scores1 <- accuracy(ARIMA_for1$mean,ts_load_testing)
-print(ARIMA_scores1)
-```
 
