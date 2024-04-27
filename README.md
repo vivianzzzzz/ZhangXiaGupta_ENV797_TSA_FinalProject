@@ -4,7 +4,7 @@ Team Members: Haochong Xia, Xiyue Zhang, Ayush Gupta
 
 
 ## Overview
-This is the repository of our final project: Forecasting Bitcoin Returns. We aim to predict the daily returns of Bitcoin using time series analysis. We will use the ARIMA, ETS, TBATS, and Neural Network models to forecast the daily returns of Bitcoin. The data used in this project is the daily Bitcoin price data from 2017-01-01 to 2024-04-08. The data is divided into training and testing datasets. The training dataset is from 2014 to 2020, and the testing dataset is from 2021 to 2022. We will use the training dataset to fit the models and the testing dataset to evaluate the models. The evaluation metric we will use is the Root Mean Squared Error (RMSE). The model with the lowest RMSE will be considered the best model. We will also use the models to forecast the daily returns of Bitcoin for the month of July 2022. The forecasted returns will be compared to the actual returns to evaluate the models' performance.
+This is the repository of our final project: Forecasting Bitcoin Returns. We aim to predict the daily returns of Bitcoin using time series analysis. We will use the ARIMA, ETS, TBATS, and Neural Network models to forecast the daily returns of Bitcoin. The data used in this project is the daily Bitcoin price data from 2017-01-01 to 2024-04-08. The evaluation metric we will use is the Root Mean Squared Error (RMSE). The model with the lowest RMSE will be considered the best model. We will also use the models to forecast the daily returns of Bitcoin for the next 30 days. 
 
 ## Data
 The `Data` directory contains two datasets:
