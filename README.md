@@ -55,10 +55,8 @@ We use this model to forecast the daily returns of Bitcoin for the next 30 days.
    ```bash
    git clone https://github.com/vivianzzzzz/ZhangXiaGupta_ENV797_TSA_FinalProject/
    cd ZhangXiaGupta_ENV797_TSA_FinalProject
-   cd Models
-   python arima_model.py
    ```
-
+2. Execute the R Markdown file to run the scripts and notebooks for each model. This will generate the outputs, including model results, visualizations, and forecasts.
 
 
 ## References
