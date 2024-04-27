@@ -44,9 +44,22 @@ The best model from our testing dataset is:
 
 We use this model to forecast the daily returns of Bitcoin for the next 30 days.
 
+## Instructions for Reproduction
 
-## License
-This project is open source and available under the GNU General Public License v3.0. See the LICENSE file for more information.
+### Prerequisites
+- Git installed on your local machine
+- Python 3.x installed with pip
+
+### Steps
+1. **Clone Repository**: Clone this repository to your local machine using the following command:
+   ```bash
+   git clone https://github.com/vivianzzzzz/ZhangXiaGupta_ENV797_TSA_FinalProject/
+   cd ZhangXiaGupta_ENV797_TSA_FinalProject
+   cd Models
+   python arima_model.py
+   ```
+
+
 
 ## References
 1. https://fred.stlouisfed.org/series/DCOILBRENTEU
