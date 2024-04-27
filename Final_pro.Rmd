@@ -1,8 +1,9 @@
 ---
 title: "TSA Final Project"
+subtitle: "https://github.com/vivianzzzzz/ZhangXiaGupta_ENV797_TSA_FinalProject"
 author: "Xiyue Zhang, Haochong Xia, Ayush Gupta"
 date: "`r Sys.Date()`"
-output: openintro::lab_report
+output: pdf_document
 ---
 
 ```{r load-packages, message=FALSE}
@@ -16,8 +17,10 @@ library(smooth)
 library(zoo)
 ```
 
+## 1.Data preprocessing
+
 ```{r}
-bitcoin_raw <- read.csv("/Users/vivianz/Desktop/mids/spring2024/Time Series/bitcoin.csv",header=TRUE)
+bitcoin_raw <- read.csv("data/bitcoin.csv",header=TRUE)
 
 bitcoin <-  bitcoin_raw[nrow(bitcoin_raw):1, ] %>%
   mutate(date = as.Date(Date, format="%m/%d/%Y")) %>%
@@ -34,6 +37,65 @@ bitcoin$Change[bitcoin$Change == 0] <- median_value
 
 
 ```
+
+```{r}
+# Read the dataset
+data <- read.csv("data/DCOILBRENTEU.csv")
+
+# Convert DATE column to Date format
+data$DATE <- as.Date(data$DATE)
+
+# Create a sequence of dates from the start date to the end date
+start_date <- min(data$DATE)
+end_date <- max(data$DATE)
+dates <- seq(start_date, end_date, by = "day")
+
+# Filter out Fridays
+fridays <- filter(data, weekdays(DATE) == "Friday")
+
+# Create a dataframe for Saturdays and Sundays
+weekend_data <- data.frame(
+  DATE = c(fridays$DATE + 1, fridays$DATE + 2),
+  DCOILBRENTEU = rep(fridays$DCOILBRENTEU, each = 1)
+)
+
+# Combine the original data with the new weekend data
+final_data <- bind_rows(data, weekend_data)
+
+# Sort the final dataset by DATE
+final_data <- final_data[order(final_data$DATE), ]
+
+# Reset index
+final_data <- final_data %>% 
+  arrange(DATE) %>%
+  mutate(index = row_number()) %>%
+  select(index, everything())
+
+# View the modified dataset
+#final_data
+
+# Fill missing values with zeros
+# final_data_filled <- final_data %>%
+  # mutate(DCOILBRENTEU = ifelse(is.na(DCOILBRENTEU), 0, DCOILBRENTEU))
+
+
+# Convert "." to NA in the DCOILBRENTEU column
+final_data_filled <- final_data  %>%
+  mutate(DCOILBRENTEU = ifelse(DCOILBRENTEU == ".", NA, DCOILBRENTEU))
+
+# Replace NA values with the value right before it
+final_data_filled <- final_data_filled %>%
+  fill(DCOILBRENTEU)
+
+
+# Convert string numbers to numerical values
+final_data_filled$DCOILBRENTEU <- as.numeric(final_data_filled$DCOILBRENTEU)
+
+# View the modified dataframe
+#final_data_filled
+```
+
+### 1.1 Train test splits & Creating ts and msts
 
 ```{r}
 # Only use the data after 2017-01-01
@@ -59,6 +121,11 @@ head(test_bitcoin)
 
 
 ```{r}
+ts_bitcoin <- ts(train_bitcoin$Change, frequency = 365.25, start = c(2017,01,01))
+ts_bitcoin_test <- ts(test_bitcoin$Change, frequency = 365.25, start = c(2023,07,18))
+msts_bitcoin <- msts(train_bitcoin$Change,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2017,01,01))
 #Creating time series with seasonal pattern (quarterly, daily)
 msts_bitcoin <- msts(train_bitcoin$Change,
                            seasonal.periods =c( 91.25,365.25),
@@ -66,7 +133,34 @@ msts_bitcoin <- msts(train_bitcoin$Change,
 msts_bitcoin_test <- msts(test_bitcoin$Change,
                            seasonal.periods =c( 91.25,365.25),
                            start=c(2023,07,18))
+```
 
+
+```{r}
+# Set the proportion for train, test datasets
+train_prop <- 0.9
+
+# Set the number of observations for train, test datasets
+n_train <- floor(nrow(final_data_filled) * train_prop)
+n_val <- nrow(final_data_filled) - n_train
+
+# Split the data into train and test datasets
+train_oil <- final_data_filled %>% filter(DATE >= ymd("2017-01-01") & DATE <= ymd("2023-01-01"))
+test_oil <- final_data_filled %>% filter(DATE >= ymd("2023-07-18") )
+#Creating time series
+ts_oil <- ts(train_oil$DCOILBRENTEU, frequency = 365.25, start = c(2017,01,01))
+ts_oil_test <- ts(test_oil$DCOILBRENTEU, frequency = 365.25, start = c(2023,07,18))
+msts_oil <- msts(train_oil$DCOILBRENTEU,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2017,01,01))
+msts_oil_test <- msts(test_oil$DCOILBRENTEU,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2023,07,18))
+```
+
+## 2.Plot time series and ACF and PACF
+
+```{r}
 #plot the time series
 ts_bitcoin %>% mstl() %>%
   autoplot()
@@ -78,13 +172,27 @@ pacf(ts_bitcoin, lag.max = 100, main="PACF plot of bitcoin")
 ```
 
 ```{r}
+#plot the time series
+ts_oil %>% mstl() %>%
+  autoplot()
+# Generate ACF and PACF plots
+
+par(mfrow=c(1,2))
+acf(ts_oil,lag.max = 100, main= "ACF plot of Crude Oil")
+pacf(ts_oil, lag.max = 100, main="PACF plot of Crude Oil")
+```
+
+## 3. Models fit
+### 3.1 STL + ETS model
+
+```{r}
 # STL + ETS model
 ETS_fit <-  stlf(msts_bitcoin,h=266)
 
 plot(ETS_fit)
 autoplot(msts_bitcoin_test) + autolayer(ETS_fit, series="ETS",PI=FALSE)
 ETS_scores <- accuracy(ETS_fit$mean,msts_bitcoin_test)
-print(ETS_scores)
+#print(ETS_scores)
 
 checkresiduals(ETS_fit)
 
@@ -92,6 +200,7 @@ checkresiduals(ETS_fit)
 
 ```
 
+### 3.2 TBATS model
 
 ```{r}
 # TBATS model
@@ -100,9 +209,11 @@ TBATS_forcast <- forecast(TBATS_fit, h=266)
 plot(TBATS_forcast)
 autoplot(ts_bitcoin_test) + autolayer(TBATS_forcast, series="TBATS", PI=FALSE)
 TBATS_scores <- accuracy(TBATS_forcast$mean,msts_bitcoin_test)
-print(TBATS_scores)
+#print(TBATS_scores)
 checkresiduals(TBATS_fit)
 ```
+
+### 3.3 Arima with seasonality
 
 ```{r}
 #Arima with seasonality
@@ -112,14 +223,16 @@ plot(arima_forecast)
 autoplot(msts_bitcoin_test) + autolayer(arima_forecast, series="ARIMA", PI=FALSE)
 
 ARIMA_scores <- accuracy(arima_forecast$mean,msts_bitcoin_test)
-print(ARIMA_scores)
+#print(ARIMA_scores)
 
 
 ```
+
 ```{r}
 checkresiduals(arima_forecast)
 ```
 
+### 3.4 Neural network with fourier
 
 ```{r}
 #Neural network with fourier (3,12), p=1,P=1
@@ -131,10 +244,12 @@ autoplot(msts_bitcoin_test) +
   autolayer(NN_for1, series="Neural Network",PI=FALSE)
 
 NN_scores1 <- accuracy(NN_for1$mean,msts_bitcoin_test)
-print(NN_scores1)
+#print(NN_scores1)
 checkresiduals(NN_fit1)
 
 ```
+
+## 4. Models fit with external variables as regressor
 
 ```{r}
 # create the covid regressor
@@ -154,10 +269,9 @@ autoplot(msts_bitcoin_test) +
   autolayer(NN_for3, series="NN+covid",PI=FALSE)
 
 NN_scores3 <- accuracy(NN_for3$mean,msts_bitcoin_test)
-print(NN_scores3)
+#print(NN_scores3)
 checkresiduals(NN_fit3)
 ```
-
 
 ```{r}
 #SS Exponential smoothing
@@ -165,7 +279,7 @@ SSES_fit1 <- es(msts_bitcoin,model="ZZZ",h=266,holdout=FALSE)
 
 plot(SSES_fit1)
 SSES_scores1 <- accuracy(SSES_fit1$forecast,msts_bitcoin_test)
-print(SSES_scores1)
+#print(SSES_scores1)
 ```
 
 ```{r}
@@ -179,17 +293,184 @@ autoplot(msts_bitcoin_test) +
   autolayer(ARIMA_for1, series="ARIMA+Covid",PI=FALSE)
 
 ARIMA_scores1 <- accuracy(ARIMA_for1$mean,msts_bitcoin_test)
-print(ARIMA_scores1)
+#print(ARIMA_scores1)
 checkresiduals(ARIMA_fit1)
+```
+
+```{r}
+#Crude oil regressors
+oil_regressors<- as.matrix(data.frame(fourier(msts_bitcoin,K=c(3,12)),"oil"=msts_oil))
+oil_fc<-forecast(msts_oil, h=266)
+oil_regressors_fc<-as.matrix(data.frame(fourier(msts_bitcoin,K=c(3,12), h=266),"oil"= oil_fc$mean))
+```
+
+```{r}
+#Arima with regressor
+
+arima_fit_r <- auto.arima(msts_bitcoin,seasonal= FALSE, lambda=0,xreg=oil_regressors)
+arima_forecast_r <- forecast(arima_fit_r, xreg=oil_regressors_fc,h=266)
+
+plot(arima_forecast_r)
+autoplot(msts_bitcoin_test) + autolayer(arima_forecast_r, series="ARIMA+Oil", PI=FALSE)
+
+
+autoplot(arima_forecast_r)
+autoplot(msts_bitcoin) +
+  autolayer(arima_forecast_r, series="ARIMA+Oil",PI=FALSE)
+
+ARIMA_scores_oil <- accuracy(arima_forecast_r$mean,msts_bitcoin_test)
+#print(ARIMA_scores_oil)
+
+# Use checkresiduals to plot and assess residuals
+checkresiduals(arima_forecast_r)
+```
+
+```{r}
+NN_fit_o <- nnetar(msts_bitcoin,p=1,P=1,xreg=oil_regressors)
+NN_fc_o <- forecast(NN_fit_o,h=266, xreg=oil_regressors_fc)
+
+plot(NN_fc_o)
+autoplot(msts_bitcoin_test) + autolayer(NN_fc_o, series="Neural Network+Oil", PI=FALSE)
+
+autoplot(NN_fc_o)
+autoplot(msts_bitcoin) +
+  autolayer(NN_fc_o, series="Neural Network+Oil",PI=FALSE)
+
+NN_scores_o <- accuracy(NN_fc_o$mean,msts_bitcoin_test)
+#print(NN_scores_o)
+
+# Use checkresiduals to plot and assess residuals
+checkresiduals(NN_fc_o)
+```
+
+```{r}
+# Combine two regressors
+covid_oil_regressor <- as.matrix(data.frame(fourier(msts_bitcoin, K=c(3,12), h=nrow(train_bitcoin)), "covid"= train_bitcoin$covid, "oil"=msts_oil))
+covid_oil_regressor_fc <- as.matrix(data.frame(fourier(msts_bitcoin, K=c(3,12),h=nrow(test_bitcoin)), "covid"= test_bitcoin$covid, "oil"=oil_fc$mean))
+
+```
+
+```{r}
+#Arima with two regressor
+
+arima_fit_co <- auto.arima(msts_bitcoin,seasonal= FALSE, lambda=0,xreg=covid_oil_regressor)
+arima_forecast_co <- forecast(arima_fit_co, xreg=covid_oil_regressor_fc,h=266)
+
+plot(arima_forecast_co)
+autoplot(msts_bitcoin_test) + autolayer(arima_forecast_co, series="ARIMA+Covid+Oil", PI=FALSE)
+
+
+autoplot(arima_forecast_co)
+autoplot(msts_bitcoin) +
+  autolayer(arima_forecast_co, series="ARIMA+Covid+Oil",PI=FALSE)
+
+ARIMA_scores_co <- accuracy(arima_forecast_co$mean,msts_bitcoin_test)
+#print(ARIMA_scores_co)
+# Use checkresiduals to plot and assess residuals
+checkresiduals(arima_forecast_co)
 ```
 
 
 ```{r}
-# print the scores in a table
-scores <- rbind(ETS_scores, TBATS_scores, ARIMA_scores,ARIMA_scores1, NN_scores1,NN_scores3)
-rownames(scores) <- c("ETS", "TBATS", "ARIMA","ARIMA with Covid","Neural Network with Fourier","Neural Network with Covid")
-print(scores)
+# NN+covid+oil
+NN_fit_co <- nnetar(msts_bitcoin,p=1,P=1,xreg=covid_oil_regressor)
+NN_for_co <- forecast(NN_fit_co,h=266, xreg=covid_oil_regressor_fc)
+
+plot(NN_for_co)
+autoplot(msts_bitcoin_test) + autolayer(NN_for_co, series="Neural Network+Covid+Oil", PI=FALSE)
+
+autoplot(NN_for_co)
+autoplot(msts_bitcoin) +
+  autolayer(NN_for_co, series="NN+covid+oil",PI=FALSE)
+
+NN_scores_co <- accuracy(NN_for_co$mean,msts_bitcoin_test)
+#print(NN_scores_co)
+# Use checkresiduals to plot and assess residuals
+checkresiduals(NN_for_co)
+```
+
+
+## 5. Forecast
+```{r}
+ts_oil_all <- final_data_filled %>% filter(DATE >= ymd("2017-01-01"))
+combined_msts <- msts(ts_oil_all$DCOILBRENTEU,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2017,01,01))
+ts_bit_all <- bitcoin %>% filter(date >= ymd("2017-01-01"))
+combined_msts_bit <- msts(ts_bit_all$Change,
+                           seasonal.periods =c( 91.25,365.25),
+                           start=c(2017,01,01))
+oil_regressors_pd<- as.matrix(data.frame(fourier(combined_msts_bit,K=c(3,12)),"oil"=combined_msts))
+oil_fc_pd<-forecast(combined_msts, h=30)
+oil_regressors_fc_pd<-as.matrix(data.frame(fourier(combined_msts_bit,K=c(3,12), h=30),"oil"= oil_fc_pd$mean))
+
+arima_fit_r_pd <- auto.arima(combined_msts_bit,seasonal= FALSE, lambda=0,xreg=oil_regressors_pd)
+arima_forecast_r_pd <- forecast(arima_fit_r_pd, xreg=oil_regressors_fc_pd,h=30)
+
+plot(arima_forecast_r_pd)
+autoplot(combined_msts_bit) + autolayer(arima_forecast_r_pd, series="ARIMA+Oil", PI=TRUE)
+
+
+autoplot(arima_forecast_r_pd)
+autoplot(combined_msts_bit) +
+  autolayer(arima_forecast_r_pd, series="ARIMA+Oil",PI=FALSE)
+
 
 ```
 
+```{r}
+# Extract the mean forecast values
+mean_forecast <- arima_forecast_r_pd$mean
+
+# Length of mean_forecast
+n <- length(mean_forecast)
+
+# Extract the dates for the x-axis
+dates <- seq(from = as.Date("2024-04-08"), by = "day", length.out = n)
+
+# Plot the mean forecast with specified x-axis range
+plot(dates, mean_forecast, type = "l", xlab = "Date", ylab = "Forecasted Values", 
+     main = "ARIMA Forecast", xlim = c(as.Date("2024-04-08"), as.Date("2024-05-08")))
+```
+## 6. Table
+
+```{r}
+# Load required packages
+library(knitr)
+library(kableExtra)
+
+# Combine scores
+combined_scores <- rbind(
+  ETS_scores,
+  TBATS_scores,
+  ARIMA_scores,
+  ARIMA_scores1,
+  NN_scores1,
+  NN_scores3,
+  ARIMA_scores_oil,
+  ARIMA_scores_co,
+  NN_scores_o,
+  NN_scores_co
+)
+
+# Define row names
+rownames(combined_scores) <- c(
+  "ETS", "TBATS", "ARIMA", "ARIMA with Covid",
+  "Neural Network with Fourier", "Neural Network with Covid",
+  "ARIMA with Oil", "ARIMA with Covid and Oil",
+  "Neural Network with Oil", "Neural Network with Covid and Oil"
+)
+
+knitr::kable(
+  combined_scores,
+  format = "latex",
+  caption = "Combined Scores"
+) %>%
+  kable_styling(
+    latex_options = c("hold_position", "scale_down"),
+    full_width = FALSE
+)
+
+
+```
 
